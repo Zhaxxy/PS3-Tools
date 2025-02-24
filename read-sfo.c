@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #define FILE_VERSION 0x4
 #define NAME_TABLE 0x8
@@ -29,47 +30,60 @@
 #define SAVEDATA_FILE_LIST_SIZE 3168
 #define SAVEDATA_PARAMS_SIZE 128
 
+#if defined(__BYTE_ORDER__)&&(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+
+#define sfo_ES16(_val) (uint16_t)_val
+#define sfo_ES32(_val) (uint32_t)_val
+
+#else
+
+#define sfo_ES16(_val) \
+	((uint16_t)(((((uint16_t)_val) & 0xff00) >> 8) | \
+	       ((((uint16_t)_val) & 0x00ff) << 8)))
+
+#define sfo_ES32(_val) \
+	((uint32_t)(((((uint32_t)_val) & 0xff000000) >> 24) | \
+	       ((((uint32_t)_val) & 0x00ff0000) >> 8 ) | \
+	       ((((uint32_t)_val) & 0x0000ff00) << 8 ) | \
+	       ((((uint32_t)_val) & 0x000000ff) << 24)))
+
+#endif
+
+
 int find_table( int xxxx_start, int xxxx_TABLE, FILE *file ) 
 {
 	fseek( file, xxxx_TABLE, SEEK_SET ); 
 	fread( &xxxx_start, sizeof(uint32_t), 1, file );
+	xxxx_start = sfo_ES32(xxxx_start);
 	return xxxx_start;
-}                                
+}                               
 
-void print_params_value( char message[ ], unsigned char *data_utf8[ ], int counter, int size)
+void print_params_value( char message[ ], char *data_utf8[ ], int counter, int size)
 {
 	int i;
 
-	printf( "%s", message );
+	//printf( "%s", message );
 	for( i = 0; i < size; i++ ) 
 	{
-		printf( "%.2x ", *data_utf8[ counter ] );
+		//printf( "%.2x ", *data_utf8[ counter ] );
 		++data_utf8[ counter ];
 	}
 }
 
-int main( int argc, char *argv[ ] ) 
+char * get_title_id_from_param(char * param_sfo_file_name)
 {
-	if( argc != 2 ) 
-	{
-		printf( "Usage: %s PARAM.SFO\n", argv[ 0 ] );
-		exit(1);
-	}
-
 	FILE *sfo;
 
-	sfo = fopen( argv[ 1 ], "r+" ); 
+	sfo = fopen( param_sfo_file_name, "r+" ); 
 	if( sfo == NULL ) 
 	{
-		perror( "Error opening file" );
-		printf( "\n" );
-		exit(1);
+		return 0;
 	}
 	
-	uint32_t data_start;
-	uint32_t name_start;
-	uint32_t entries_num;
-	uint32_t file_version;
+	uint32_t data_start = 0;
+	uint32_t name_start = 0;
+	uint32_t entries_num = 0;
+	uint32_t file_version = 0;
 	
 	name_start = find_table( name_start, NAME_TABLE, sfo );
 	data_start = find_table( data_start, DATA_TABLE, sfo );
@@ -88,10 +102,20 @@ int main( int argc, char *argv[ ] )
 	for( i = 0; i < entries_num; i++ ) 
 	{		
 		fread( & offset_name[ i ], sizeof(uint16_t), 1, sfo ); 
-		fread( & data_type[ i ], sizeof(uint16_t), 1, sfo ); 	
-		fread( & data_used[ i ], sizeof(uint32_t), 1, sfo ); 
+		offset_name[ i ] = sfo_ES16(offset_name[ i ]);
+		
+		fread( & data_type[ i ], sizeof(uint16_t), 1, sfo ); 
+		data_type[ i ] = sfo_ES16(data_type[ i ]);
+		
+		fread( & data_used[ i ], sizeof(uint32_t), 1, sfo );
+		data_used[ i ] = sfo_ES32(data_used[ i ]);
+		
 	 	fread( & data_total[ i ], sizeof(uint32_t), 1, sfo );
+		data_total[ i ] = sfo_ES32(data_total[ i ]);
+		
 		fread( & offset_data[ i ], sizeof(uint32_t), 1, sfo );
+		offset_data[ i ] = sfo_ES32(offset_data[ i ]);
+		
 	}  
   
 	char *list_param[ entries_num ];
@@ -105,7 +129,7 @@ int main( int argc, char *argv[ ] )
 	}	
 	
 	uint32_t data_int[ entries_num ];
-	unsigned char *data_utf[ entries_num ];	
+	char *data_utf[ entries_num ];	
 	
 	for( i = 0; i < entries_num; i++ ) 
 	{
@@ -113,28 +137,33 @@ int main( int argc, char *argv[ ] )
 		{
 			fseek( sfo, data_start + offset_data[ i ], SEEK_SET );	
 			fread( &data_int[ i ], data_used[ i ], 1, sfo );
+			data_int[ i ] = sfo_ES32(data_int[ i ]);
 		}	
 		else 
 		{
 			fseek( sfo, data_start + offset_data[ i ], SEEK_SET );
-			data_utf[ i ] = ( unsigned char *)malloc( data_used[ i ] );
+			data_utf[ i ] = (  char *)malloc( data_used[ i ] );
 			fread( data_utf[ i ], data_used[ i ], 1, sfo );
 		}
 	}
 	fclose( sfo );
 
-	printf( "\n****************\n|    HEADER    |\n****************\n\n" );
-	printf( "FILE_VERSION: %#x\n\nN°_PARAMETERS: %d\n\n", file_version, entries_num );
-	printf( "****************\n|  PARAMETERS  |\n****************\n\n" );
+	// printf( "\n****************\n|    HEADER    |\n****************\n\n" );
+	// printf( "FILE_VERSION: %#x\n\nN°_PARAMETERS: %d\n\n", file_version, entries_num );
+	// printf( "****************\n|  PARAMETERS  |\n****************\n\n" );
 
 	int y;
-
+	
 	for( y = 0; y < entries_num; y++) 
-	{
-		printf( "%s: ", list_param[ y ] );
+	{	
+		if (strcmp(list_param[y],"TITLE") != 0) {
+			continue;
+		}
+		
+		// printf( "%s: ", list_param[ y ] );
 		if( data_type[ y ] == DATA_INT ) 
 		{
-			printf( "0x%.2x\n\n", data_int[ y ] );
+			// printf( "0x%.2x\n\n", data_int[ y ] );
 		}	
 		else if( data_type[ y ] == DATA_UTF_SPEC ) 
 		{
@@ -150,22 +179,22 @@ int main( int argc, char *argv[ ] )
 					print_params_value( "\n\tuserid    | ", data_utf, y, 0x4 );
 					print_params_value( "\n\taccountid | ", data_utf, y, 0x10 );
 					print_params_value( "\n\tunknown   | ", data_utf, y, 0x4 );
-					printf( ".. .. .. (end at offset 0x%.2x)\n\n", data_start + offset_data[ y + 1 ] );
+					// printf( ".. .. .. (end at offset 0x%.2x)\n\n", data_start + offset_data[ y + 1 ] );
 					break;
 				case SAVEDATA_FILE_LIST_SIZE:
-					printf( "file name  | %s\n\t\t    file hash? | ", data_utf[ y ] );
+					// printf( "file name  | %s\n\t\t    file hash? | ", data_utf[ y ] );
 					for( i = 0; i < 0x10; i++ )
 					{
-						printf( "%.2x ", *(data_utf[ y ] + 0xD) );
+						// printf( "%.2x ", *(data_utf[ y ] + 0xD) );
 						++data_utf[ y ];
 					}
-					printf( "\t\t    continue.. | " );
+					// printf( "\t\t    continue.. | " );
 					for( i = 0; i < 0x4; i++ )
 					{
-						printf( "%.2x ", *(data_utf[ y ] + 0xD) );
+						// printf( "%.2x ", *(data_utf[ y ] + 0xD) );
 						++data_utf[ y ];
 					}
-					printf( ".. .. .. (end at offset 0x%.2x)\n\n", data_start + offset_data[ y + 1 ] );
+					// printf( ".. .. .. (end at offset 0x%.2x)\n\n", data_start + offset_data[ y + 1 ] );
 					break;
 				case SAVEDATA_PARAMS_SIZE:
 					print_params_value( "not change | ", data_utf, y, 0x10 );
@@ -176,20 +205,46 @@ int main( int argc, char *argv[ ] )
 					print_params_value( "\n\t\t not change | ", data_utf, y, 0x10 );
 					print_params_value( "\n\t\t not change | ", data_utf, y, 0x10 );
 					print_params_value( "\n\t\t change     | ", data_utf, y, 0x10 );
-					printf( "\n\n" );
+					// printf( "\n\n" );
 					break;
 				default:
 					for( i = 0; i < data_used[ y ]; i++ ) 
 					{	
-						printf( "%.2x ", *data_utf[ y ] );
+						// printf( "%.2x ", *data_utf[ y ] );
 						++data_utf[ y ];
 					}
-					printf( "\n\n" );
+					// printf( "\n\n" );
 			}
 		}
-		else /* DATA UTF8 */
-			printf( "%s\n\n", data_utf[ y ] );
+		else {/* DATA UTF8 */
+			char * new_text;
+			new_text = malloc(strlen(data_utf[ y ]));
+			strcpy(new_text,data_utf[ y ]);
+			for( i = 0; i < entries_num; i++ ) 
+			{
+				free(list_param[ i ]);
+			}
+			for( i = 0; i < entries_num; i++ ) 
+			{
+				if( data_type[ i ] != DATA_INT ) {
+					free(data_utf[ i ]);
+				}
+			}
+			return new_text;
+			// printf( "%s\n\n", data_utf[ y ] );
+		}
 	}
-	printf( "\n** Thanks www.ps3devwiki.com :D **\n\n" );
+
+	for( i = 0; i < entries_num; i++ ) 
+	{
+		free(list_param[ i ]);
+	}
+	for( i = 0; i < entries_num; i++ ) 
+	{
+		if( data_type[ i ] != DATA_INT ) {
+			free(data_utf[ i ]);
+		}
+	}
+	// printf( "\n** Thanks www.ps3devwiki.com :D **\n\n" );
 	return 0;
 }
