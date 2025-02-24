@@ -31,21 +31,19 @@
 #define SAVEDATA_PARAMS_SIZE 128
 
 #if defined(__BYTE_ORDER__)&&(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#define READ_SFO_ES16(_val) \
+	((uint16_t)(((((uint16_t)_val) & 0xff00) >> 8) | \
+		   ((((uint16_t)_val) & 0x00ff) << 8)))
 
-#define sfo_ES16(_val) (uint16_t)_val
-#define sfo_ES32(_val) (uint32_t)_val
+#define READ_SFO_ES32(_val) \
+	((uint32_t)(((((uint32_t)_val) & 0xff000000) >> 24) | \
+		   ((((uint32_t)_val) & 0x00ff0000) >> 8 ) | \
+		   ((((uint32_t)_val) & 0x0000ff00) << 8 ) | \
+		   ((((uint32_t)_val) & 0x000000ff) << 24)))
 
 #else
-
-#define sfo_ES16(_val) \
-	((uint16_t)(((((uint16_t)_val) & 0xff00) >> 8) | \
-	       ((((uint16_t)_val) & 0x00ff) << 8)))
-
-#define sfo_ES32(_val) \
-	((uint32_t)(((((uint32_t)_val) & 0xff000000) >> 24) | \
-	       ((((uint32_t)_val) & 0x00ff0000) >> 8 ) | \
-	       ((((uint32_t)_val) & 0x0000ff00) << 8 ) | \
-	       ((((uint32_t)_val) & 0x000000ff) << 24)))
+#define READ_SFO_ES16(_val) (uint16_t)_val
+#define READ_SFO_ES32(_val) (uint32_t)_val
 
 #endif
 
@@ -54,7 +52,7 @@ int find_table( int xxxx_start, int xxxx_TABLE, FILE *file )
 {
 	fseek( file, xxxx_TABLE, SEEK_SET ); 
 	fread( &xxxx_start, sizeof(uint32_t), 1, file );
-	xxxx_start = sfo_ES32(xxxx_start);
+	xxxx_start = READ_SFO_ES32(xxxx_start);
 	return xxxx_start;
 }                               
 
@@ -102,19 +100,19 @@ char * get_title_id_from_param(char * param_sfo_file_name)
 	for( i = 0; i < entries_num; i++ ) 
 	{		
 		fread( & offset_name[ i ], sizeof(uint16_t), 1, sfo ); 
-		offset_name[ i ] = sfo_ES16(offset_name[ i ]);
+		offset_name[ i ] = READ_SFO_ES16(offset_name[ i ]);
 		
 		fread( & data_type[ i ], sizeof(uint16_t), 1, sfo ); 
-		data_type[ i ] = sfo_ES16(data_type[ i ]);
+		data_type[ i ] = READ_SFO_ES16(data_type[ i ]);
 		
 		fread( & data_used[ i ], sizeof(uint32_t), 1, sfo );
-		data_used[ i ] = sfo_ES32(data_used[ i ]);
+		data_used[ i ] = READ_SFO_ES32(data_used[ i ]);
 		
 	 	fread( & data_total[ i ], sizeof(uint32_t), 1, sfo );
-		data_total[ i ] = sfo_ES32(data_total[ i ]);
+		data_total[ i ] = READ_SFO_ES32(data_total[ i ]);
 		
 		fread( & offset_data[ i ], sizeof(uint32_t), 1, sfo );
-		offset_data[ i ] = sfo_ES32(offset_data[ i ]);
+		offset_data[ i ] = READ_SFO_ES32(offset_data[ i ]);
 		
 	}  
   
@@ -137,7 +135,7 @@ char * get_title_id_from_param(char * param_sfo_file_name)
 		{
 			fseek( sfo, data_start + offset_data[ i ], SEEK_SET );	
 			fread( &data_int[ i ], data_used[ i ], 1, sfo );
-			data_int[ i ] = sfo_ES32(data_int[ i ]);
+			data_int[ i ] = READ_SFO_ES32(data_int[ i ]);
 		}	
 		else 
 		{
